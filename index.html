@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Marronniers — La Frise de l'Actualité</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --label-w: 190px;
+      --month-w: 80px;
+      --lane-h:  28px;
+      --row-pad: 8px;
+      --c-m: #16a34a;   /* marronniers  – green  */
+      --c-p: #2563eb;   /* prévus       – blue   */
+      --c-i: #dc2626;   /* imprévus     – red    */
+      --c-l: #7c3aed;   /* longs        – purple */
+      --c-e: #ea580c;   /* médiatiques  – orange */
+    }
+
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                   'Helvetica Neue', Arial, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+
+    /* ── Header ──────────────────────────────────────────────── */
+    #header {
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 18px 24px 14px;
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    #header h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 5px;
+      letter-spacing: -.01em;
+    }
+    #header p {
+      font-size: .8rem;
+      color: #64748b;
+      line-height: 1.7;
+      max-width: 760px;
+    }
+    #header p strong { color: #334155; }
+    #header p em     { font-style: italic; }
+
+    /* ── Legend ──────────────────────────────────────────────── */
+    #legend {
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 6px 20px 6px calc(var(--label-w) + 24px);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      position: sticky;
+      top: 0; /* adjusted by JS */
+      z-index: 190;
+    }
+    .leg-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: .7rem;
+      color: #475569;
+      font-weight: 500;
+    }
+    .leg-swatch {
+      width: 22px;
+      height: 8px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    /* ── Scroll container ─────────────────────────────────────── */
+    #tl-scroll {
+      overflow-x: auto;
+      overflow-y: visible;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #tl-scroll.dragging { cursor: grabbing; }
+    #tl-scroll::-webkit-scrollbar          { height: 7px; }
+    #tl-scroll::-webkit-scrollbar-track    { background: #f1f5f9; }
+    #tl-scroll::-webkit-scrollbar-thumb    { background: #94a3b8; border-radius: 4px; }
+
+    /* ── Timeline body ────────────────────────────────────────── */
+    #tl-body {
+      display: inline-flex;
+      flex-direction: column;
+      min-width: 100%;
+    }
+
+    /* Each row = label cell + track cell */
+    .tl-row { display: flex; align-items: stretch; }
+
+    /* Sticky-left label ----------------------------------------- */
+    .tl-label {
+      width: var(--label-w);
+      min-width: var(--label-w);
+      flex-shrink: 0;
+      position: sticky;
+      left: 0;
+      z-index: 30;
+      background: #fff;
+      border-right: 2px solid #e2e8f0;
+    }
+    /* alternating row tint */
+    .tl-row:nth-child(even) .tl-label { background: #fafbfc; }
+
+    /* ── Date axis row ────────────────────────────────────────── */
+    .axis-corner {
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+    }
+    .axis-corner-text {
+      font-size: .6rem;
+      font-weight: 600;
+      color: #cbd5e1;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+    }
+    .axis-track {
+      position: relative;
+      height: 56px;
+      background: #fff;
+      border-bottom: 2px solid #e2e8f0;
+      flex: 1;
+    }
+    .year-label {
+      position: absolute;
+      top: 7px;
+      font-size: .85rem;
+      font-weight: 700;
+      color: #1e293b;
+      padding: 0 3px;
+    }
+    .month-label {
+      position: absolute;
+      bottom: 6px;
+      font-size: .58rem;
+      color: #94a3b8;
+      text-align: center;
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+    .year-tick {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 1px;
+      background: #cbd5e1;
+      pointer-events: none;
+    }
+    .month-tick {
+      position: absolute;
+      bottom: 0;
+      width: 1px;
+      height: 10px;
+      background: #e2e8f0;
+      pointer-events: none;
+    }
+    .present-badge {
+      position: absolute;
+      top: 7px;
+      background: #ef4444;
+      color: #fff;
+      font-size: .55rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      padding: 2px 5px;
+      border-radius: 3px;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      z-index: 5;
+    }
+
+    /* ── Category rows ────────────────────────────────────────── */
+    .cat-label {
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      border-bottom: 1px solid #f0f4f8;
+    }
+    .tl-row:nth-child(even) .cat-label { background: #fafbfc; }
+    .cat-label-inner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cat-bar {
+      width: 3px;
+      height: 22px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .cat-name {
+      font-size: .67rem;
+      font-weight: 600;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      line-height: 1.3;
+    }
+    .cat-track {
+      position: relative;
+      border-bottom: 1px solid #f0f4f8;
+      flex: 1;
+    }
+    .tl-row:nth-child(even) .cat-track { background: #fafbfc; }
+
+    /* ── Grid lines ───────────────────────────────────────────── */
+    .g-year, .g-month {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 1px;
+      pointer-events: none;
+    }
+    .g-year  { background: #e2e8f0; }
+    .g-month { background: #f1f5f9; }
+
+    /* ── Present line ─────────────────────────────────────────── */
+    .present-line {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 2px;
+      background: rgba(239,68,68,.45);
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    /* ── Event blocks ─────────────────────────────────────────── */
+    .evt {
+      position: absolute;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      padding: 0 7px;
+      font-size: .6rem;
+      font-weight: 500;
+      color: rgba(255,255,255,.95);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: default;
+      transition: filter .12s, transform .1s;
+    }
+    .evt:hover {
+      filter: brightness(1.15);
+      transform: scaleY(1.08);
+      z-index: 10;
+      overflow: visible;
+    }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <h1>🌰 Les Marronniers de l'Actualité</h1>
+  <p>
+    Les médias ont toujours quelque chose à raconter. Le calendrier mondial est perpétuellement rempli
+    d'<strong>événements prévisibles</strong> — les <em>marronniers</em> : rentrée scolaire, Noël, soldes, canicule… —
+    de <strong>grands événements planifiés</strong> des années à l'avance (JO, Coupe du Monde, élections…),
+    de <strong>crises et imprévus</strong> (catastrophes, attentats, scandales soudains…) et
+    d'<strong>affaires médiatiques</strong> qui surgissent dans les creux du calendrier.
+    Il n'existe pas de vide dans l'actualité.
+  </p>
+</div>
+
+<div id="legend"></div>
+
+<div id="tl-scroll">
+  <div id="tl-body"><!-- built by JS --></div>
+</div>
+
+<script>
+(() => {
+  // ── Config ────────────────────────────────────────────────────────────────
+  const SY = 2022, SM = 1;    // Timeline start: Jan 2022
+  const EY = 2028, EM = 12;   // Timeline end:   Dec 2028
+  const MW  = 80;              // px per month
+  const LH  = 28;              // lane height (px)
+  const LP  = 8;               // row top/bottom padding (px)
+  const LBW = 190;             // label column width (px) — matches CSS
+
+  const NOW = new Date();
+  const PY  = NOW.getFullYear();
+  const PM  = NOW.getMonth() + 1;  // 1-12
+
+  const MO = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+
+  /** Month index from timeline start (0-based) */
+  function mi(y, m) { return (y - SY) * 12 + (m - 1); }
+  const TOT = mi(EY, EM) + 1;  // total months
+  const TW  = TOT * MW;         // total track width (px)
+  const PX  = mi(PY, PM) * MW;  // present x offset (px)
+
+  // ── Categories ────────────────────────────────────────────────────────────
+  const CATS = [
+    { id: 'm', label: 'Marronniers',            color: '#16a34a' },
+    { id: 'p', label: 'Événements prévus',      color: '#2563eb' },
+    { id: 'i', label: 'Imprévus',               color: '#dc2626' },
+    { id: 'l', label: 'Événements longs',       color: '#7c3aed' },
+    { id: 'e', label: 'Événements médiatiques', color: '#ea580c' },
+  ];
+
+  // ── Events ────────────────────────────────────────────────────────────────
+  function ev(t, c, sy, sm, ey, em) { return { t, c, s:[sy,sm], e:[ey,em] }; }
+
+  /** Generate n annual occurrences of a recurring event */
+  function rep(prefix, c, sm, em, sy, n) {
+    sy = sy || 2022; n = n || 7;
+    return Array.from({length: n}, (_, i) => {
+      const y = sy + i;
+      return ev(`${prefix} ${y}`, c, y, sm, y, em);
+    });
+  }
+
+  const EVENTS = [
+    // ── MARRONNIERS ─────────────────────────────────────────────────────────
+    ...rep('Rentrée scolaire',  'm',  9,  9),
+    ...rep('Noël',              'm', 12, 12),
+    ...rep("Soldes d'hiver",    'm',  1,  2),
+    ...rep("Soldes d'été",      'm',  6,  7),
+    ...rep('14 Juillet',        'm',  7,  7),
+    ...rep('Pâques',            'm',  4,  4),
+    ...rep('Halloween',         'm', 10, 10),
+    ...rep('Black Friday',      'm', 11, 11),
+    ...rep('Canicule',          'm',  7,  8),
+    ...rep('Épidémie grippe',   'm',  1,  2),
+    ...rep("Pouvoir d'achat",   'm',  3,  3),
+    ...rep('Fête du Travail',   'm',  5,  5),
+
+    // ── ÉVÉNEMENTS PRÉVUS ────────────────────────────────────────────────────
+    ev('Roland-Garros',         'p', 2022,  5, 2022,  6),
+    ev('Tour de France',        'p', 2022,  7, 2022,  7),
+    ev('CM Qatar 2022',         'p', 2022, 11, 2022, 12),
+    ev('Roland-Garros',         'p', 2023,  5, 2023,  6),
+    ev('Tour de France',        'p', 2023,  7, 2023,  7),
+    ev('CM Rugby 2023',         'p', 2023,  9, 2023, 10),
+    ev('Élections européennes', 'p', 2024,  6, 2024,  6),
+    ev('Roland-Garros',         'p', 2024,  5, 2024,  6),
+    ev('Euro 2024 (Allemagne)', 'p', 2024,  6, 2024,  7),
+    ev('Tour de France',        'p', 2024,  7, 2024,  7),
+    ev('JO Paris 2024',         'p', 2024,  7, 2024,  8),
+    ev('Paralympics 2024',      'p', 2024,  8, 2024,  9),
+    ev('Présidentielle US',     'p', 2024, 11, 2024, 11),
+    ev('Roland-Garros',         'p', 2025,  5, 2025,  6),
+    ev('Tour de France',        'p', 2025,  7, 2025,  7),
+    ev('Festival de Cannes',    'p', 2025,  5, 2025,  5),
+    ev('Roland-Garros',         'p', 2026,  5, 2026,  6),
+    ev('CM 2026 (USA/CAN/MEX)', 'p', 2026,  6, 2026,  7),
+    ev('Tour de France',        'p', 2026,  7, 2026,  7),
+    ev('Présidentielle FR',     'p', 2027,  4, 2027,  5),
+    ev('Roland-Garros',         'p', 2027,  5, 2027,  6),
+    ev('Législatives FR',       'p', 2027,  6, 2027,  7),
+    ev('Tour de France',        'p', 2027,  7, 2027,  7),
+    ev('Roland-Garros',         'p', 2028,  5, 2028,  6),
+    ev('Tour de France',        'p', 2028,  7, 2028,  7),
+    ev('JO Los Angeles 2028',   'p', 2028,  7, 2028,  8),
+
+    // ── IMPRÉVUS ─────────────────────────────────────────────────────────────
+    ev('Séisme Turquie/Syrie',      'i', 2023, 2, 2023, 2),
+    ev('Naufrage migrants',         'i', 2023, 6, 2023, 6),
+    ev('Submersible Titan',         'i', 2023, 6, 2023, 6),
+    ev('Émeutes en France',         'i', 2023, 7, 2023, 7),
+    ev('Incendies Hawaï',           'i', 2023, 8, 2023, 8),
+    ev('Incendies Grèce',           'i', 2023, 8, 2023, 8),
+    ev('Inondations Libye',         'i', 2023, 9, 2023, 9),
+    ev('Séisme Maroc',              'i', 2023, 9, 2023, 9),
+    ev('Attaque Hamas/Israël',      'i', 2023, 10, 2023, 10),
+    ev("Chute d'Assad",             'i', 2024, 12, 2024, 12),
+    ev('DANA Espagne',              'i', 2024, 10, 2024, 11),
+    ev('Incendies Los Angeles',     'i', 2025, 1, 2025, 1),
+    ev('Séisme Myanmar',            'i', 2025, 3, 2025, 3),
+
+    // ── ÉVÉNEMENTS LONGS ─────────────────────────────────────────────────────
+    ev('Guerre en Ukraine',         'l', 2022,  2, 2028, 12),
+    ev('Guerre Israël-Gaza',        'l', 2023, 10, 2027,  6),
+    ev('Crise énergétique',         'l', 2022,  1, 2023,  6),
+    ev('Inflation mondiale',        'l', 2022,  2, 2024,  6),
+    ev('Crise du logement',         'l', 2023,  1, 2028, 12),
+    ev('Urgence climatique',        'l', 2022,  6, 2028, 12),
+
+    // ── ÉVÉNEMENTS MÉDIATIQUES ────────────────────────────────────────────────
+    ev('Polémique wokisme',         'e', 2022,  2, 2023,  3),
+    ev('Affaire Depp / Heard',      'e', 2022,  4, 2022,  6),
+    ev("Mort d'Élisabeth II",       'e', 2022,  9, 2022,  9),
+    ev('Affaire Quatennens',        'e', 2022,  9, 2022, 11),
+    ev('Polémique retraites',       'e', 2023,  1, 2023,  4),
+    ev('Couronnement Charles III',  'e', 2023,  5, 2023,  5),
+    ev('Mort de Nahel',             'e', 2023,  7, 2023,  8),
+    ev('Affaire Depardieu',         'e', 2023, 12, 2024,  6),
+    ev('Disparition médiatisée',    'e', 2024,  3, 2024,  5),
+    ev('Affaire Pélicot',           'e', 2024,  9, 2024, 12),
+    ev('Affaire Hulot (procès)',    'e', 2025,  1, 2025,  3),
+    ev('Affaire Sarkozy (prison)',  'e', 2025,  1, 2025,  6),
+    ev('Polémique IA/Deepfakes',    'e', 2025,  6, 2026,  3),
+    ev('Scandale sportif',          'e', 2026, 10, 2027,  1),
+    ev('Affaire corruption politique', 'e', 2026, 4, 2026, 8),
+    ev('Polémique réseaux sociaux', 'e', 2027,  3, 2027,  5),
+  ];
+
+  // ── Lane placement ────────────────────────────────────────────────────────
+  function computeLanes(events) {
+    const sorted = [...events].sort((a, b) => mi(a.s[0], a.s[1]) - mi(b.s[0], b.s[1]));
+    const placed = [];
+    for (const evt of sorted) {
+      const s = mi(evt.s[0], evt.s[1]);
+      const e = mi(evt.e[0], evt.e[1]);
+      let lane = 0;
+      while (placed.some(p => p.lane === lane && !(p.e < s || p.s > e))) lane++;
+      placed.push({ ...evt, s, e, lane });
+    }
+    return placed;
+  }
+
+  // ── Build DOM ─────────────────────────────────────────────────────────────
+  function buildTimeline() {
+    const scrollEl = document.getElementById('tl-scroll');
+    const body     = document.getElementById('tl-body');
+    const legendEl = document.getElementById('legend');
+
+    // Legend
+    CATS.forEach(cat => {
+      const item = document.createElement('div');
+      item.className = 'leg-item';
+      item.innerHTML = `<div class="leg-swatch" style="background:${cat.color}"></div><span>${cat.label}</span>`;
+      legendEl.appendChild(item);
+    });
+
+    // Pre-compute lanes per category
+    const placedByCat = {};
+    CATS.forEach(cat => {
+      placedByCat[cat.id] = computeLanes(EVENTS.filter(ev => ev.c === cat.id));
+    });
+
+    // Row heights
+    const rowH = {};
+    CATS.forEach(cat => {
+      const max = placedByCat[cat.id].reduce((m, e) => Math.max(m, e.lane), 0);
+      rowH[cat.id] = (max + 1) * LH + LP * 2;
+    });
+
+    // ── Date axis ──────────────────────────────────────────────────────────
+    const axisRow = document.createElement('div');
+    axisRow.className = 'tl-row';
+
+    const axisCorner = document.createElement('div');
+    axisCorner.className = 'tl-label axis-corner';
+    axisCorner.innerHTML = '<span class="axis-corner-text">Catégorie</span>';
+    axisRow.appendChild(axisCorner);
+
+    const axisTrack = document.createElement('div');
+    axisTrack.className = 'axis-track';
+    axisTrack.style.width = TW + 'px';
+
+    for (let y = SY; y <= EY; y++) {
+      const mEnd = (y === EY) ? EM : 12;
+      for (let m = 1; m <= mEnd; m++) {
+        const x = mi(y, m) * MW;
+        if (m === 1) {
+          // Year label + heavy tick
+          const lbl = document.createElement('div');
+          lbl.className = 'year-label';
+          lbl.textContent = y;
+          lbl.style.left = x + 4 + 'px';
+          axisTrack.appendChild(lbl);
+
+          const tick = document.createElement('div');
+          tick.className = 'year-tick';
+          tick.style.left = x + 'px';
+          axisTrack.appendChild(tick);
+        } else {
+          // Month label + light tick
+          const lbl = document.createElement('div');
+          lbl.className = 'month-label';
+          lbl.textContent = MO[m - 1];
+          lbl.style.left = (x + MW / 2) + 'px';
+          axisTrack.appendChild(lbl);
+
+          const tick = document.createElement('div');
+          tick.className = 'month-tick';
+          tick.style.left = x + 'px';
+          axisTrack.appendChild(tick);
+        }
+      }
+    }
+
+    // Present badge on axis
+    const badge = document.createElement('div');
+    badge.className = 'present-badge';
+    badge.textContent = 'PRÉSENT';
+    badge.style.left = PX + 'px';
+    axisTrack.appendChild(badge);
+
+    axisRow.appendChild(axisTrack);
+    body.appendChild(axisRow);
+
+    // ── Category rows ───────────────────────────────────────────────────────
+    CATS.forEach(cat => {
+      const placed = placedByCat[cat.id];
+      const rh     = rowH[cat.id];
+
+      const row = document.createElement('div');
+      row.className = 'tl-row';
+
+      // Label cell
+      const lCell = document.createElement('div');
+      lCell.className = 'tl-label cat-label';
+      lCell.style.minHeight = rh + 'px';
+      lCell.innerHTML = `
+        <div class="cat-label-inner">
+          <div class="cat-bar" style="background:${cat.color}"></div>
+          <span class="cat-name">${cat.label}</span>
+        </div>`;
+      row.appendChild(lCell);
+
+      // Track cell
+      const tCell = document.createElement('div');
+      tCell.className = 'cat-track';
+      tCell.style.width  = TW + 'px';
+      tCell.style.height = rh + 'px';
+
+      // Grid lines
+      for (let y = SY; y <= EY; y++) {
+        const mEnd = (y === EY) ? EM : 12;
+        for (let m = 1; m <= mEnd; m++) {
+          const line = document.createElement('div');
+          line.className = m === 1 ? 'g-year' : 'g-month';
+          line.style.left = (mi(y, m) * MW) + 'px';
+          tCell.appendChild(line);
+        }
+      }
+
+      // Present line
+      const pLine = document.createElement('div');
+      pLine.className = 'present-line';
+      pLine.style.left = PX + 'px';
+      tCell.appendChild(pLine);
+
+      // Events
+      placed.forEach(evt => {
+        const x = evt.s * MW + 2;
+        const w = Math.max((evt.e - evt.s + 1) * MW - 4, 22);
+        const t = LP + evt.lane * LH;
+
+        const el = document.createElement('div');
+        el.className = 'evt';
+        el.title     = evt.t;
+        el.textContent = evt.t;
+        el.style.cssText =
+          `left:${x}px;width:${w}px;top:${t}px;height:${LH - 6}px;` +
+          `background:${cat.color};opacity:${evt.lane % 2 === 0 ? 1 : .78};`;
+        tCell.appendChild(el);
+      });
+
+      row.appendChild(tCell);
+      body.appendChild(row);
+    });
+
+    // ── Scroll to present on load ───────────────────────────────────────────
+    requestAnimationFrame(() => {
+      const viewW = scrollEl.clientWidth - LBW;
+      scrollEl.scrollLeft = Math.max(0, PX - viewW / 2);
+    });
+  }
+
+  // ── Drag-to-scroll ────────────────────────────────────────────────────────
+  function initDrag() {
+    const el = document.getElementById('tl-scroll');
+    let active = false, startX = 0, startScroll = 0;
+
+    el.addEventListener('pointerdown', e => {
+      active = true;
+      startX = e.clientX;
+      startScroll = el.scrollLeft;
+      el.classList.add('dragging');
+      el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener('pointermove', e => {
+      if (!active) return;
+      el.scrollLeft = startScroll - (e.clientX - startX);
+    });
+    const stop = () => { active = false; el.classList.remove('dragging'); };
+    el.addEventListener('pointerup',     stop);
+    el.addEventListener('pointercancel', stop);
+  }
+
+  // ── Sticky offsets ────────────────────────────────────────────────────────
+  function updateOffsets() {
+    const headerH = document.getElementById('header').offsetHeight;
+    document.getElementById('legend').style.top = headerH + 'px';
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  buildTimeline();
+  initDrag();
+  updateOffsets();
+  window.addEventListener('resize', updateOffsets);
+})();
+</script>
+</body>
+</html>
